@@ -159,7 +159,6 @@ cd "$CARGO_WORKSPACE_DIR"
 If you use `rust-analyzer` then you may also want to edit `kernel/Cargo.toml` and `user/Cargo.toml` to allow for testing:
 
 ```toml [kernel/Cargo.toml] {5}
-...
 
 [[bin]]
 name = "kernel"
@@ -167,7 +166,6 @@ test = true
 doctest = false
 bench = false
 
-...
 ```
 
 Now that we have our configuration in place, we can proceed.
