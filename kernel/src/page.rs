@@ -79,3 +79,70 @@ pub fn map_page(table1: &mut PageTable, vaddr: VAddr, paddr: PAddr, flags: usize
     table0[vaddr.vpn0()] = paddr.ppn() | flags | PAGE_V;
 }
 
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{print, println};
+
+    #[test_case]
+    fn vaddr_to_vpn0() {
+        print!("page: vaddr to vpn0...");
+
+        let vaddr = VAddr::new(0x10008000);
+        let vpn0 = vaddr.vpn0();
+        assert!(vpn0 == 8);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn vaddr_to_vpn1() {
+        print!("page: vaddr to vpn0...");
+
+        let vaddr = VAddr::new(0x10008000);
+        let vpn1 = vaddr.vpn1();
+        assert!(vpn1 == 0x40);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn paddr_to_ppn() {
+        print!("page: paddr to ppn...");
+
+        let paddr = PAddr::new(0x87654321);
+        let ppn = paddr.ppn();
+        assert!(ppn == 0x21d95000);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn ppn_to_paddr() {
+        print!("page: ppn to paddr...");
+
+        let paddr = PAddr::from_ppn(0x21d95000);
+        assert!(paddr.as_usize() == 0x87654000);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn map_a_page() {
+        print!("page: map a page...");
+
+        let pt = &mut PageTable::new();
+        let vaddr = VAddr::new(0x12345000);
+        map_page(pt, vaddr, PAddr::new(0x87654000), 0xF);
+        // println!("pt[vaddr.vpn1()] == {:x}", pt[vaddr.vpn1()]);
+        // assert!(pt[vaddr.vpn1()] == 0x20094c01);
+
+        let table0 = unsafe {
+            let mut table0_paddr = PAddr::from_ppn(pt[vaddr.vpn1()]);
+            &mut *(table0_paddr.as_ptr_mut() as *mut PageTable)
+        };
+        assert!(table0[vaddr.vpn0()] == 0x21d9500f);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+}

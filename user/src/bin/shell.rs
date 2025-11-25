@@ -3,6 +3,11 @@
 #![no_std]
 #![no_main]
 
+#![cfg_attr(test, feature(custom_test_frameworks))]
+#![cfg_attr(test, test_runner(crate::test_runner))]
+#![cfg_attr(test, reexport_test_harness_main = "test_main")]
+
+
 use core::ffi::CStr;
 
 use user::{
@@ -17,6 +22,10 @@ use user::{
 
 #[unsafe(no_mangle)]
 fn main() {
+
+    #[cfg(test)]
+    test_main();
+
     loop {
         print!("> ");
         let mut cmdline = [b'\n'; 128];
@@ -68,5 +77,28 @@ fn main() {
                 println!("unknown command: {}", cmdline_str);
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{print, println};
+
+    #[test_case]
+    fn shell_trivial_test() {
+        print!("shell: trivial test...");
+
+        assert!(1 == 1);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+}
+
+#[cfg(test)]
+pub fn test_runner(tests: &[&dyn Fn()]) {
+    println!("Running {} user tests", tests.len());
+    for test in tests {
+        test();
     }
 }

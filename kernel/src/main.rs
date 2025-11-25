@@ -3,6 +3,10 @@
 #![no_std]
 #![no_main]
 
+#![cfg_attr(test, feature(custom_test_frameworks))]
+#![cfg_attr(test, test_runner(crate::test_runner))]
+#![cfg_attr(test, reexport_test_harness_main = "test_main")]
+
 pub extern crate alloc;
 
 use core::arch::naked_asm;
@@ -84,6 +88,8 @@ fn kernel_main() -> ! {
     virtio_blk_init();
     fs_init();
 
+    #[cfg(test)]
+    test_main();
 
     common::println!("Hello World! 🦀");
 
@@ -115,4 +121,40 @@ unsafe extern "C" fn boot() -> ! {
         stack_top = sym __stack_top,
         kernel_main = sym kernel_main,
     );
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test_case]
+    fn trivial_test() {
+        // Trivial test to ensure test_runner is working
+        // Deliberately doesn't print to avoid invoking code
+        print!("trivial assertion... ");
+        assert!(1 == 1);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    // In kernel tests
+    #[test_case]
+    fn test_common_constants() {
+        use common::*;
+        print!("common: common constants... ");
+
+        assert_eq!(SYS_PUTBYTE, 1);
+        assert_eq!(SYS_GETCHAR, 2);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+}
+
+#[cfg(test)]
+pub fn test_runner(tests: &[&dyn Fn()]) {
+    println!("Running {} tests", tests.len());
+    for test in tests {
+        test();
+    }
 }

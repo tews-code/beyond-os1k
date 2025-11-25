@@ -277,3 +277,37 @@ macro_rules! write_csr {
         }
     };
 }
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{print, println};
+
+    #[test_case]
+    fn write_and_read_csr() {
+        print!("entry: write and read CSR...");
+
+        let tmp = read_csr!("sscratch");
+        let sscratch = 0x87654321;
+        write_csr!("sscratch", sscratch);
+        assert!(sscratch == read_csr!("sscratch"));
+        write_csr!("sscratch", tmp);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn handle_syscall_put_byte() {
+        print!("entry: handle syscall put byte...");
+
+        let f = &mut TrapFrame { ra: 0, gp: 0, tp: 0, t0: 0, t1: 0, t2: 0, t3: 0, t4: 0, t5: 0, t6: 0, a0: 0, a1: 0, a2: 0, a3: 0, a4: 0, a5: 0, a6: 0, a7: 0, s0: 0, s1: 0, s2: 0, s3: 0, s4: 0, s5: 0, s6: 0, s7: 0, s8: 0, s9: 0, s10: 0, s11: 0, sp: 0 };
+
+        f.a0 = 'T' as usize;
+        f.a4 = SYS_PUTBYTE;
+
+        handle_syscall(f);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+}

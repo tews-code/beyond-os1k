@@ -56,3 +56,19 @@ unsafe impl GlobalAlloc for BumpAllocator {
 
     unsafe fn dealloc(&self, _: *mut u8, _: Layout) {}
 }
+
+#[cfg(test)]
+mod test {
+    use alloc::vec;
+    use crate::{print, println};
+
+    #[test_case]
+    fn allocate_a_vec() {
+        print!("allocator: allocate a vec...");
+
+        let v = vec![1, 2, 3];
+        assert!(v == [1, 2, 3]);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+}

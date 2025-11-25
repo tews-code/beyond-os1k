@@ -19,6 +19,24 @@ if [ "$COMMAND" == "clean" ]; then
     rm -f user/user.map;
 fi
 
+if [ "$COMMAND" == "test" ]; then
+    cargo clean;
+    TEST_BINARY=$(cargo test --no-run -p user --bin shell --message-format=json 2>/dev/null | \
+    sed -n 's/.*"executable":"\([^"]*\)".*/\1/p' | \
+    head -n 1);
+    cd $TARGET_DIR;
+    cp "$TEST_BINARY" shell
+
+    $OBJCOPY --set-section-flags=.bss=alloc,contents \
+        --output-target=binary \
+        shell shell.bin;
+    cp shell.bin "$CWD";
+    $OBJCOPY -Ibinary -Oelf32-littleriscv shell.bin shell.bin.o;
+    file shell.bin.o;
+    cp shell.bin.o "$CWD";
+    cd "$CWD";
+    cargo test --bin kernel;
+fi
 
 if [ "$COMMAND" == "check" ]; then
     cargo check -p user --bin shell;

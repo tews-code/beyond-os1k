@@ -201,3 +201,37 @@ pub unsafe extern "C" fn switch_context(prev_sp: *mut usize, next_sp: *mut usize
         "ret",
     )
 }
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{print, println};
+
+    #[test_case]
+    fn create_and_remove_process() {
+        print!("process: create and remove user process...");
+
+        unsafe extern "C" {
+            static _binary_shell_bin_start: u8;
+            static _binary_shell_bin_size: u8;
+        }
+
+        // Create the user process (will also create idle process)
+        let shell_start = &raw const _binary_shell_bin_start as *mut u8;
+        let shell_size = &raw const _binary_shell_bin_size as usize;  // The symbol _address_ is the size of the binary
+        let shell_pid = create_process(shell_start, shell_size);
+
+        // Check for existance of user process
+        let shell_index = PROCS.try_get_index(shell_pid)
+            .expect("should have created user process");
+
+        // Test and set back to unused
+        let mut procs = PROCS.0.lock();
+        assert!(procs[shell_index].state == State::Runnable);
+        procs[shell_index].state = State::Unused;
+        drop(procs);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+}

@@ -51,3 +51,33 @@ pub fn get_char() -> Result<isize, isize> {
         sbi_call(0, EID_CONSOLE_GETCHAR)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{print, println};
+
+    #[test_case]
+    fn push_a_byte() {
+        print!("sbi: push an 'X'... ");
+        let _ = put_byte(b'X');
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn test_get_char() {
+        print!("sbi: get char non-blocking... ");
+        let _ = get_char();
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn make_sbi_call() {
+        print!("sbi: making sbi put_char call... ");
+        let b = b'A';
+        let _ = unsafe {
+            sbi_call(b as c_int, EID_CONSOLE_PUTCHAR)
+        };
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+}

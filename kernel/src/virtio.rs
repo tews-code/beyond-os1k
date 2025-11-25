@@ -323,3 +323,64 @@ pub fn read_write_disk(buf: &mut [u8], sector: u64, is_write: bool) {
         buf.copy_from_slice(&br.data);
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{print, println};
+
+    #[test_case]
+    fn fetch_and_or_reg() {
+        print!("virtio: fetch and OR reg... ");
+
+        let device_status = virtio_reg_read32(VIRTIO_REG_DEVICE_STATUS);
+        print!("device status is {device_status}");
+        // 2. Set the ACKNOWLEDGE status bit: the guest OS has noticed the device
+        virtio_reg_fetch_and_or32(VIRTIO_REG_DEVICE_STATUS, VIRTIO_STATUS_ACK);
+        let device_status = virtio_reg_read32(VIRTIO_REG_DEVICE_STATUS);
+        print!(" and updated device status is {device_status}");
+        assert!(device_status == 5);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn read_and_write_virtio_reg_status() {
+        print!("virtio: read and write virtio reg status... ");
+        // Set the DRIVER_OK status bit.
+        virtio_reg_write32(VIRTIO_REG_DEVICE_STATUS, VIRTIO_STATUS_DRIVER_OK);
+        let virtio_status = virtio_reg_read32(VIRTIO_REG_DEVICE_STATUS);
+        assert!(virtio_status == VIRTIO_STATUS_DRIVER_OK);
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn read_virtio_64bit_reg() {
+        print!("virtio: read virtio 64-bit reg... ");
+
+        let block_capacity = virtio_reg_read64(VIRTIO_REG_DEVICE_CONFIG + 0);
+        print!("block capacity is {block_capacity}");
+        assert!(block_capacity == 20);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn write_to_file_and_read_back() {
+        print!("virtio: write to file and read back... ");
+
+        let s = "hello from kernel!!!";
+        let mut buf: [u8; SECTOR_SIZE] = [0u8; SECTOR_SIZE];
+        buf[..s.len()].copy_from_slice(s.as_bytes());
+        read_write_disk(&mut buf, 1, true /* write to the disk */);
+        // Now read back
+        read_write_disk(&mut buf, 1, false);
+        let read_str = str::from_utf8(&buf)
+        .expect("should be valid UTF8")
+        .trim_end_matches('\0')
+        .trim();
+        assert!(s == read_str);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+}

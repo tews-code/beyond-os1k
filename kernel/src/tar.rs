@@ -247,3 +247,36 @@ pub fn fs_flush() {
 
     println!("wrote {} bytes to disk", DISK_MAX_SIZE);
 }
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{print, println};
+
+    #[test_case]
+    fn check_oct2int_and_int2_oct() {
+        print!("tar: check oct2int and int2oct...");
+
+        let i:usize = 987654321;
+        let buf = &mut [0u8;64];
+        int2oct(i, buf);
+        let i_again = oct2int(buf)
+            .expect("should be able to convert back to octal");
+        assert!(i == i_again);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn look_up_file_name() {
+        print!("tar: look up file name...");
+
+        let filename = "meow.txt";
+        let Some(_) = FILES.fs_lookup(filename) else {
+            panic!("file not found {:x?}", filename);
+        };
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+}
