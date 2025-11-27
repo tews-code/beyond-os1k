@@ -1,14 +1,23 @@
-//! Panic for os1k
+# Triple Panic!
 
-use core::arch::asm;
-use core::panic::PanicInfo;
-use core::sync::atomic::{AtomicU8, Ordering::SeqCst};
+We are going to panic frequently as we build our operating system, and we need to be more robust in case we panic while we're panicing.
 
-use crate::println;
+We do this with a global atomic which counts how many times we have panicked, and each time we try to get some message to the console.
+
+# Atomic panic counter
+
+First let's add the counter starting at zero to `panic.rs`:
+
+```rust [kernel/src/panic.rs]
 
 // Panic counter. Every time the kernel panics, this counter is incremented.
 static PANIC_COUNTER: AtomicU8 = AtomicU8::new(0);
 
+```
+Now let's match on the number of panics. If it is our first panic, let's print a normal panic message.
+
+
+```rust [kernel/src/panic.rs]
 // Kernel panic handler.
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -24,6 +33,30 @@ fn panic(info: &PanicInfo) -> ! {
             loop {
                 unsafe{asm!("wfi", options(readonly, nostack, noreturn))}
             }
+        },
+        
+        _ => {
+            loop {};
+        }
+    }
+}
+```
+The critical point is to use `fetch_add` with the strictest `SeqCst` memory ordering. `fetch_add` atomically fetches the variable's value and increments it.
+
+In our first panic we simply print the panic info as normal.
+
+But what if `println!` itself is broken, and causes a panic? That would call this function again, but this time our `PANIC_COUNTER` will have a value of `1`. 
+
+Let's extend match to cover this scenario:
+
+```rust [kernel/src/panic.rs]
+
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+
+    match PANIC_COUNTER.fetch_add(1, SeqCst)
+    {
+        0 => { /* Omitted */
         },
         1 => {
             // Double panics: panicked while handling a panic. Keep it simple and avoid print macros.
@@ -58,3 +91,6 @@ fn panic(info: &PanicInfo) -> ! {
         }
     }
 }
+```
+
+That should cover us for most scenarios!
