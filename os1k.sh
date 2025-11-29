@@ -21,6 +21,9 @@ fi
 
 if [ "$COMMAND" == "test" ]; then
     cargo clean;
+    # Build with test for easy debugging
+    cargo test --no-run -p user --bin shell;
+    # Build with json output to find binary name
     TEST_BINARY=$(cargo test --no-run -p user --bin shell --message-format=json 2>/dev/null | \
     sed -n 's/.*"executable":"\([^"]*\)".*/\1/p' | \
     head -n 1);
