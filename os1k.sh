@@ -19,6 +19,11 @@ if [ "$COMMAND" == "clean" ]; then
     rm -f user/user.map;
 fi
 
+if [ "$COMMAND" == "doc" ]; then
+    cargo clean;
+    cargo doc --open;
+fi
+
 if [ "$COMMAND" == "test" ]; then
     cargo clean;
     # Build with test for easy debugging
