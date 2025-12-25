@@ -25,6 +25,7 @@ mod tar;
 mod sbi;
 mod scheduler;
 mod spinlock;
+mod timer;
 mod virtio;
 
 use crate::entry::kernel_entry;
@@ -32,9 +33,10 @@ use crate::process::{
     create_process,
     user_entry,
 };
-use crate::tar::fs_init;
 use crate::scheduler::yield_now;
 use crate::spinlock::SpinLock;
+use crate::tar::fs_init;
+use crate::timer::TIMER;
 use crate::virtio::{virtio_blk_init, SECTOR_SIZE, read_write_disk};
 
 // Safety: Symbols created by linker script
@@ -76,7 +78,6 @@ fn proc_b_entry() {
     }
 }
 
-
 #[unsafe(no_mangle)]
 fn kernel_main() -> ! {
     let bss = &raw const __bss;
@@ -91,7 +92,26 @@ fn kernel_main() -> ! {
     virtio_blk_init();
     fs_init();
 
+    // Enable timer interrupt in supervisor mode
+    unsafe {
+        let mut sie: u32;
+        asm!("csrr {}, sie", out(reg) sie);
+        // // sie |= 1 << 1; // SSIE: supervisor-level software interrupts
+        sie |= 1 << 5; // STIE: supervisor-level timer interrupts
+        // // sie |= 1 << 9; // SEIE: supervisor-level external interrupts
+        asm!("csrw sie, {}", in(reg) sie);
+        // crate::println!("in main sie is {:032b}", read_csr!("sie"));
+
+        let mut sstatus: u32;
+        asm!("csrr {}, sstatus", out(reg) sstatus);
+        sstatus |= 1 << 1;
+        asm!("csrw sstatus, {}", in(reg) sstatus);
+        // crate::println!("in main sstatus is {:032b}", read_csr!("sstatus"));
+    };
+
     common::println!("Hello World! 🦀");
+
+    TIMER.set(1_000);
 
     PROC_A.lock().get_or_insert_with(|| {
         create_process(proc_a_entry as usize, core::ptr::null(), 0)
@@ -104,8 +124,6 @@ fn kernel_main() -> ! {
     let shell_start = &raw const _binary_shell_bin_start as *mut u8;
     let shell_size = &raw const _binary_shell_bin_size as usize;  // The symbol _address_ is the size of the binary
     let _ = create_process(user_entry as *const() as usize, shell_start, shell_size);
-
-
 
     yield_now();
 

@@ -86,6 +86,7 @@ pub static PROCS: Procs = Procs::new();  // All process control structures.
 const USER_BASE: usize = 0x1000000;
 const SSTATUS_SPIE: usize =  1 << 5;    // Enable user mode
 const SSTATUS_SUM: usize = 1 << 18;
+pub const SSTATUS_SIE: usize = 1 << 1;     //  Enable supervisor interrupts
 
 pub fn user_entry() {
     unsafe{asm!(
@@ -182,9 +183,15 @@ pub fn create_process(entry: usize, image: *const u8, image_size: usize) -> usiz
 }
 
 #[unsafe(naked)]
-pub unsafe extern "C" fn switch_context(prev_sp: *mut usize, next_sp: *mut usize) {
+pub unsafe extern "C" fn switch_context(prev_sp: *mut usize, next_sp: *mut usize, interrupts_enabled: bool) {
     naked_asm!(
         ".align 2",
+
+        // Save current interrupt state and disable interrupts
+        // "csrr t0, sstatus",         // Read sstatus
+        // "andi t1, t0, 2",           // Extract SIE bit (bit 1)
+        "csrci sstatus, 2",     // Disable interrupts
+
         // Save callee-saved registers onto the current process's stack.
         "addi sp, sp, -13 * 4", // Allocate stack space for 13 4-byte registers
         "sw ra,  0  * 4(sp)",  // Save callee-saved registers only
@@ -200,6 +207,7 @@ pub unsafe extern "C" fn switch_context(prev_sp: *mut usize, next_sp: *mut usize
         "sw s9,  10 * 4(sp)",
         "sw s10, 11 * 4(sp)",
         "sw s11, 12 * 4(sp)",
+        "sw t1,  13 * 4(sp)",       // Save SIE state
 
         // Switch the stack pointer.
         "sw sp, (a0)",         // *prev_sp = sp;
@@ -220,6 +228,71 @@ pub unsafe extern "C" fn switch_context(prev_sp: *mut usize, next_sp: *mut usize
         "lw s10, 11 * 4(sp)",
         "lw s11, 12 * 4(sp)",
         "addi sp, sp, 13 * 4",  // We've popped 13 4-byte registers from the stack
+        "beqz a2, 1f",          // a2 = interrupts enabled is 0 (false)
+        "csrsi sstatus, 2",     // Reenable interrupts
+
+        "1:",
         "ret",
     )
 }
+
+
+// #[unsafe(naked)]
+// pub unsafe extern "C" fn switch_context(prev_sp: *mut usize, next_sp: *mut usize) {
+//     naked_asm!(
+//         ".align 2",
+//
+//         // Save current interrupt state and disable interrupts
+//         "csrr t0, sstatus",         // Read sstatus
+//         "andi t1, t0, 2",           // Extract SIE bit (bit 1)
+//     "csrci sstatus, 2",         // Disable interrupts
+//
+//     // Allocate stack space (13 registers + saved SIE state)
+//     "addi sp, sp, -14 * 4",
+//
+//     // Save callee-saved registers
+//     "sw ra,  0  * 4(sp)",
+//     "sw s0,  1  * 4(sp)",
+//     "sw s1,  2  * 4(sp)",
+//     "sw s2,  3  * 4(sp)",
+//     "sw s3,  4  * 4(sp)",
+//     "sw s4,  5  * 4(sp)",
+//     "sw s5,  6  * 4(sp)",
+//     "sw s6,  7  * 4(sp)",
+//     "sw s7,  8  * 4(sp)",
+//     "sw s8,  9  * 4(sp)",
+//     "sw s9,  10 * 4(sp)",
+//     "sw s10, 11 * 4(sp)",
+//     "sw s11, 12 * 4(sp)",
+//     "sw t1,  13 * 4(sp)",       // Save SIE state
+//
+//     // Switch stack pointer
+//     "sw sp, (a0)",
+//     "lw sp, (a1)",
+//
+//     // Restore callee-saved registers
+//     "lw ra,  0  * 4(sp)",
+//     "lw s0,  1  * 4(sp)",
+//     "lw s1,  2  * 4(sp)",
+//     "lw s2,  3  * 4(sp)",
+//     "lw s3,  4  * 4(sp)",
+//     "lw s4,  5  * 4(sp)",
+//     "lw s5,  6  * 4(sp)",
+//     "lw s6,  7  * 4(sp)",
+//     "lw s7,  8  * 4(sp)",
+//     "lw s8,  9  * 4(sp)",
+//     "lw s9,  10 * 4(sp)",
+//     "lw s10, 11 * 4(sp)",
+//     "lw s11, 12 * 4(sp)",
+//     "lw t1,  13 * 4(sp)",       // Restore SIE state
+//
+//     "addi sp, sp, 14 * 4",
+//
+//     // Restore interrupt state (only if it was enabled before)
+//     "beqz t1, 1f",              // If SIE was 0, skip re-enabling
+//     "csrsi sstatus, 2",         // Re-enable interrupts
+//     "1:",
+//
+//     "ret",
+//     )
+// }

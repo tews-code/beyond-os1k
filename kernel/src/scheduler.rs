@@ -88,7 +88,8 @@ pub fn yield_now() {
 
     // Context switch
     *CURRENT_PROC.lock() = Some(next_pid);
+    let interrupts_enabled: bool = (read_csr!("sstatus") & 0x2) != 0;
     unsafe {
-        switch_context(current_sp_ptr, next_sp_ptr);
+        switch_context(current_sp_ptr, next_sp_ptr, interrupts_enabled);
     }
 }
