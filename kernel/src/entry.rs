@@ -55,11 +55,18 @@ struct TrapFrame{
 }
 
 #[unsafe(naked)]
-pub unsafe extern "C" fn kernel_entry() {
+pub unsafe extern "C" fn kernel_entry() -> ! {
     naked_asm!(
         ".align 2",
         // Retrieve the kernel stack of the running process from sscratch.
         "csrrw sp, sscratch, sp",
+
+        // Check if this is a user process (sscratch != zero)
+        "bnez sp, 1f",
+        // Recover the actual sp as we are in kernel space
+        "csrrw sp, sscratch, sp",
+
+        "1:",
         "addi sp, sp, -4 * 31",
         "sw ra,  4 * 0(sp)",
         "sw gp,  4 * 1(sp)",
@@ -92,15 +99,21 @@ pub unsafe extern "C" fn kernel_entry() {
         "sw s10, 4 * 28(sp)",
         "sw s11, 4 * 29(sp)",
 
-        // Retrieve and save the sp at the time of exeception
+        // Retrieve and save the sp at the time of exception
+        "csrr a0, sscratch",        // Load sscratch into a0 (which is already stored)
+        "bnez a0, 2f",              // Check if sscratch is non zero (user process)
+        "sw sp, 4 * 30(sp)",        // Kernel process using actual stack pointer
+        "2:",
+        "sw a0, 4 * 30(sp)",        // User process, have just loaded stack pointer into a0
+
+        // Restore sscratch if a user process
         "csrr a0, sscratch",
-        "sw a0, 4 * 30(sp)",
+        "beqz a0, 3f",
+        "addi a1, sp, 4 * 31",      // a1 = sp + trap frame which is stack top
+        "csrw sscratch, a1",        // Write a1 into sscratch
 
-        // Reset the kernel stack.
-        "addi a0, sp, 4 * 31",
-        "csrw sscratch, a0",
-
-        "mv a0, sp",
+        "3:",
+        "mv a0, sp",                // a0 is set to sp (bottom of trap frame)
         "call handle_trap",
 
         "lw ra,  4 * 0(sp)",
@@ -143,6 +156,9 @@ extern "C" fn handle_trap(f: &mut TrapFrame) {
     let scause = read_csr!("scause");
     let stval = read_csr!("stval");
     let mut user_pc = read_csr!("sepc");
+
+    // let sscratch = read_csr!("sscratch");
+    // crate::println!("in handle_trap, sscratch is {sscratch:x}");
 
     if scause == SCAUSE_ECALL {
         handle_syscall(f);

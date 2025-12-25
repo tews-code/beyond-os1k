@@ -5,7 +5,10 @@
 
 pub extern crate alloc;
 
-use core::arch::naked_asm;
+use core::arch::{
+    asm,
+    naked_asm,
+};
 use core::ptr::write_bytes;
 
 #[allow(unused_imports)]
@@ -25,9 +28,13 @@ mod spinlock;
 mod virtio;
 
 use crate::entry::kernel_entry;
-use crate::process::create_process;
+use crate::process::{
+    create_process,
+    user_entry,
+};
 use crate::tar::fs_init;
 use crate::scheduler::yield_now;
+use crate::spinlock::SpinLock;
 use crate::virtio::{virtio_blk_init, SECTOR_SIZE, read_write_disk};
 
 // Safety: Symbols created by linker script
@@ -42,32 +49,32 @@ unsafe extern "C" {
     static _binary_shell_bin_size: u8;
 }
 
-// fn delay() {
-//     for _ in 0..300_000_000usize {
-//         unsafe{asm!("nop");} // do nothing
-//     }
-// }
-//
-// static PROC_A: SpinLock<Option<usize>> = SpinLock::new(None);
-// static PROC_B: SpinLock<Option<usize>> = SpinLock::new(None);
-//
-// fn proc_a_entry() {
-//     println!("starting process A");
-//     loop {
-//         print!("🐈");
-//         yield_now();
-//         delay()
-//     }
-// }
-//
-// fn proc_b_entry() {
-//     println!("starting process B");
-//     loop {
-//         print!("🐕");
-//         yield_now();
-//         delay()
-//     }
-// }
+fn delay() {
+    for _ in 0..300_000_000usize {
+        unsafe{asm!("nop");} // do nothing
+    }
+}
+
+static PROC_A: SpinLock<Option<usize>> = SpinLock::new(None);
+static PROC_B: SpinLock<Option<usize>> = SpinLock::new(None);
+
+fn proc_a_entry() {
+    println!("starting process A");
+    loop {
+        print!("🐈");
+        yield_now();
+        delay()
+    }
+}
+
+fn proc_b_entry() {
+    println!("starting process B");
+    loop {
+        print!("🐕");
+        yield_now();
+        delay()
+    }
+}
 
 
 #[unsafe(no_mangle)]
@@ -84,29 +91,19 @@ fn kernel_main() -> ! {
     virtio_blk_init();
     fs_init();
 
-    // let mut buf: [u8; SECTOR_SIZE] = [0u8; SECTOR_SIZE];
-    // read_write_disk(&mut buf, 0, false /* read from the disk */);
-    // print!("first sector:");
-    // for &b in &buf {
-    //     let _ = crate::sbi::put_byte(b);
-    // }
-    // let s = "hello from kernel!!!";
-    // buf[..s.len()].copy_from_slice(s.as_bytes());
-    // read_write_disk(&mut buf, 0, true /* write to the disk */);
-
     common::println!("Hello World! 🦀");
 
-    // PROC_A.lock().get_or_insert_with(|| {
-    //     create_process(proc_a_entry as usize)
-    // });
-    // PROC_B.lock().get_or_insert_with(|| {
-    //     create_process(proc_b_entry as usize)
-    // });
+    PROC_A.lock().get_or_insert_with(|| {
+        create_process(proc_a_entry as usize, core::ptr::null(), 0)
+    });
+    PROC_B.lock().get_or_insert_with(|| {
+        create_process(proc_b_entry as usize, core::ptr::null(), 0)
+    });
 
     // new!
     let shell_start = &raw const _binary_shell_bin_start as *mut u8;
     let shell_size = &raw const _binary_shell_bin_size as usize;  // The symbol _address_ is the size of the binary
-    let _ = create_process(shell_start, shell_size);
+    let _ = create_process(user_entry as *const() as usize, shell_start, shell_size);
 
 
 

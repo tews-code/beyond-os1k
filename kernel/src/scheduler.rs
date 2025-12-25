@@ -11,10 +11,14 @@ static IDLE_PROC: SpinLock<Option<usize>> = SpinLock::new(None);    // Idle proc
 pub static CURRENT_PROC: SpinLock<Option<usize>> = SpinLock::new(None); // Currently running process
 const IDLE_PID: usize = 0; // idle
 
+fn idle_process() {
+    panic!("reached idle process");
+}
+
 pub fn yield_now() {
     // Initialse IDLE_PROC if not yet initialised
     let idle_pid = { *IDLE_PROC.lock().get_or_insert_with(|| {
-            let idle_pid = create_process(core::ptr::null(), 0);
+            let idle_pid = create_process(idle_process as *const() as usize, core::ptr::null(), 0);
             if let Some(p) = PROCS.0.lock().iter_mut()
                 .find(|p| p.pid == idle_pid) {
                     p.pid = IDLE_PID;
@@ -63,7 +67,13 @@ pub fn yield_now() {
         let satp = SATP_SV32 | (page_table_addr / PAGE_SIZE);
         //Safety: sscratch points to the end of next.stack, which is a valid stack allocation.
 
-        let sscratch = unsafe { next.stack.as_ptr().add(next.stack.len()) };
+        let sscratch = if next.is_kernel {
+            0
+        } else {
+            next.stack.as_ptr_range().end as usize
+        };
+        // crate::println!("in scheduler, next sscratch is {sscratch:x}");
+
         (next_sp_ptr, current_sp_ptr, satp, sscratch)
     };
 

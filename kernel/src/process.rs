@@ -28,11 +28,12 @@ pub enum State {
 
 #[derive(Clone, Debug)]
 pub struct Process {
-    pub pid: usize,            // Process ID
-    pub state: State,          // Process state: Unused or Runnable
-    pub sp: VAddr,             // Stack pointer
+    pub pid: usize,             // Process ID
+    pub state: State,           // Process state: Unused or Runnable
+    pub is_kernel: bool,        // Kernel process
+    pub sp: VAddr,              // Stack pointer
     pub page_table: Option<Box<PageTable>>,
-    pub stack: [u8; 8192],     // Kernel stack
+    pub stack: [u8; 8192],      // Kernel stack
 }
 
 impl Process {
@@ -40,6 +41,7 @@ impl Process {
         Self {
             pid: 0,
             state: State::Unused,
+            is_kernel: false,
             sp: VAddr::new(0),
             page_table: None,
             stack: [0; 8192],
@@ -85,7 +87,7 @@ const USER_BASE: usize = 0x1000000;
 const SSTATUS_SPIE: usize =  1 << 5;    // Enable user mode
 const SSTATUS_SUM: usize = 1 << 18;
 
-fn user_entry() {
+pub fn user_entry() {
     unsafe{asm!(
         "csrw sepc, {sepc}",
         "csrw sstatus, {sstatus}",
@@ -95,7 +97,8 @@ fn user_entry() {
     )}
 }
 
-pub fn create_process(image: *const u8, image_size: usize) -> usize {
+pub fn create_process(entry: usize, image: *const u8, image_size: usize) -> usize {
+    let is_kernel = {image_size == 0 };         // Kernel processes have zero image size
     let mut procs = PROCS.0.lock();
 
     // Find an unused process control structure.
@@ -107,7 +110,7 @@ pub fn create_process(image: *const u8, image_size: usize) -> usize {
     // Stack callee-saved registers. These register values will be restored in
     // the first context switch in switch_context.
     let callee_saved_regs: [usize; 13] = [
-        user_entry as usize,            // ra
+        entry as usize,            // ra
         0,             // s0
         0,             // s1
         0,             // s2
@@ -144,32 +147,35 @@ pub fn create_process(image: *const u8, image_size: usize) -> usize {
 
     process.page_table = Some(page_table);
 
-    // Map user pages.
-    let aligned_size = align_up(image_size, PAGE_SIZE);
-    let image_slice = unsafe {
-        slice::from_raw_parts(image, image_size)
+    if !is_kernel {
+        // Map user pages.
+        let aligned_size = align_up(image_size, PAGE_SIZE);
+        let image_slice = unsafe {
+            slice::from_raw_parts(image, image_size)
+        };
+        let mut image_vec = image_slice.to_vec();
+        image_vec.resize(aligned_size, 0);
+        let image_data = Box::leak(image_vec.into_boxed_slice());
+        let page_table = process.page_table.as_mut()
+        .expect("page table must be initialized before mapping user pages");
+
+        for (i, page_chunk) in image_data.chunks_mut(PAGE_SIZE).enumerate() {
+            let vaddr = VAddr::new(USER_BASE + i * PAGE_SIZE);
+            let paddr = PAddr::new(page_chunk.as_mut_ptr() as usize);
+
+            map_page(
+                page_table,
+                vaddr,
+                paddr,
+                PAGE_U | PAGE_R | PAGE_W | PAGE_X,
+            );
+        }
     };
-    let mut image_vec = image_slice.to_vec();
-    image_vec.resize(aligned_size, 0);
-    let image_data = Box::leak(image_vec.into_boxed_slice());
-    let page_table = process.page_table.as_mut()
-    .expect("page table must be initialized before mapping user pages");
-
-    for (i, page_chunk) in image_data.chunks_mut(PAGE_SIZE).enumerate() {
-        let vaddr = VAddr::new(USER_BASE + i * PAGE_SIZE);
-        let paddr = PAddr::new(page_chunk.as_mut_ptr() as usize);
-
-        map_page(
-            page_table,
-            vaddr,
-            paddr,
-            PAGE_U | PAGE_R | PAGE_W | PAGE_X,
-        );
-    }
 
     // Initialise fields.
     process.pid = i + 1;
     process.state = State::Runnable;
+    process.is_kernel = is_kernel;
     process.sp = VAddr::new(&raw const process.stack[callee_saved_regs_start] as usize);
 
     process.pid
