@@ -10,6 +10,7 @@ use core::arch::{
     naked_asm,
 };
 use core::ptr::write_bytes;
+use core::sync::atomic::AtomicBool;
 
 #[allow(unused_imports)]
 use common::{print, println};
@@ -64,7 +65,7 @@ fn proc_a_entry() {
     println!("starting process A");
     loop {
         print!("🐈");
-        yield_now();
+        // yield_now();
         delay()
     }
 }
@@ -73,7 +74,7 @@ fn proc_b_entry() {
     println!("starting process B");
     loop {
         print!("🐕");
-        yield_now();
+        // yield_now();
         delay()
     }
 }
@@ -111,7 +112,7 @@ fn kernel_main() -> ! {
 
     common::println!("Hello World! 🦀");
 
-    TIMER.set(1_000);
+    TIMER.set(500);
 
     PROC_A.lock().get_or_insert_with(|| {
         create_process(proc_a_entry as usize, core::ptr::null(), 0)
@@ -125,9 +126,13 @@ fn kernel_main() -> ! {
     let shell_size = &raw const _binary_shell_bin_size as usize;  // The symbol _address_ is the size of the binary
     let _ = create_process(user_entry as *const() as usize, shell_start, shell_size);
 
+    // crate::println!("function proc_a_entry is at address {:x}", proc_a_entry as *const() as usize);
+    // crate::println!("function proc_b_entry is at address {:x}", proc_b_entry as *const() as usize);
+    // crate::println!("function shell is at address {:x}", user_entry as *const() as usize);
+
     yield_now();
 
-    panic!("switched to idle process");
+    unreachable!("should never reach here!");
 }
 
 #[unsafe(link_section = ".text.boot")]

@@ -16,11 +16,11 @@ pub const PAGE_X: usize = 1 << 3;   // Executable
 pub const PAGE_U: usize = 1 << 4;   // User (accessible in user mode)
 
 impl VAddr {
-    fn vpn0(&self) -> usize {
+    pub fn vpn0(&self) -> usize {
         self.as_usize() >> 12 & 0x3FF
     }
 
-    fn vpn1(&self) -> usize {
+    pub fn vpn1(&self) -> usize {
         self.as_usize() >> 22 & 0x3FF
     }
 }
@@ -30,7 +30,7 @@ impl PAddr {
         (self.as_usize() / PAGE_SIZE) << 10
     }
 
-    fn from_ppn(pte: usize) -> Self {
+    pub fn from_ppn(pte: usize) -> Self {
         PAddr::new((pte >> 10) * PAGE_SIZE)
     }
 }

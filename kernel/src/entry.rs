@@ -23,8 +23,8 @@ const SCAUSE_TIMER_INTERRUPT: usize = 0x80000005;
 
 #[derive(Debug)]
 #[repr(C, packed)]
-struct TrapFrame{
-    ra: usize,
+pub struct TrapFrame{
+    ra: usize,      // 0
     gp: usize,
     tp: usize,
     t0: usize,
@@ -54,22 +54,24 @@ struct TrapFrame{
     s9: usize,
     s10: usize,
     s11: usize,
-    sp: usize,
+    sp: usize,          // 30
+    sscratch: usize,    // 31
 }
 
 #[unsafe(naked)]
 pub unsafe extern "C" fn kernel_entry() -> ! {
     naked_asm!(
         ".align 2",
-        // Retrieve the kernel stack of the running process from sscratch.
-        "csrrw sp, sscratch, sp",
 
-        // Check if this is a user process (sscratch != zero)
+        // Retrieve the kernel stack of the running process from sscratch.
+        "csrrw sp, sscratch, sp",       // Swap sp and sscratch
+
+        // Check if this is process has trapped from userspace (sscratch != zero)
         "bnez sp, 1f",
         "csrr sp, sscratch",            // Get kernel sp back from sscratch
 
         "1:",
-        "addi sp, sp, -4 * 31",
+        "addi sp, sp, -4 * 32",
         "sw ra,  4 * 0(sp)",
         "sw gp,  4 * 1(sp)",
         "sw tp,  4 * 2(sp)",
@@ -104,17 +106,21 @@ pub unsafe extern "C" fn kernel_entry() -> ! {
         // Retrieve and save the sp at the time of exception
         "csrr a0, sscratch",        // Load sscratch into a0 (which is already stored)
         "bnez a0, 2f",              // Check if sscratch is non zero (user process)
-        "sw sp, 4 * 30(sp)",        // Kernel process using actual stack pointer
+
+        // Kernel process
+        "sw sp, 4 * 30(sp)",        // Kernel process using already the actual stack pointer
+        "sw zero, 4 * 31(sp)",      // Kernel process sscratch stored as zero
+        "j 3f",
+
+        // User process
         "2:",
         "sw a0, 4 * 30(sp)",        // User process, have just loaded stack pointer into a0
-
-        // Restore sscratch if a user process
-        "csrr a0, sscratch",
-        "beqz a0, 3f",
-        "addi a1, sp, 4 * 31",      // a1 = sp + trap frame which is stack top
-        "csrw sscratch, a1",        // Write a1 into sscratch
+        "addi a0, sp, 4 * 32",      // a0 = sp + trap frame which is kernel stack top
+        "sw a0, 4 * 31(sp)",
 
         "3:",
+        // Now set sscratch to zero for kernel space
+        "csrw sscratch, x0",            // Zero sscratch now we are in kernel space
         "mv a0, sp",                // a0 is set to sp (bottom of trap frame)
         "call handle_trap",
     );
@@ -124,6 +130,18 @@ pub unsafe extern "C" fn kernel_entry() -> ! {
 extern "C" fn kernel_return(f: &mut TrapFrame) -> ! {
     naked_asm!(
         "mv sp, a0",                // Trap frame is in a0, switch this to sp
+
+        // Check if we trapped from userspace and restore sscratch
+        // "csrr a0, sstatus",         // Read sstatus to a0 (safe as a0 saved to sp)
+        // "andi a0, a0, 8",           // sstatus.SPP is at bit 8 (0=prev priv user)
+        // "bnez a0, 1f",
+        // "li a0,"
+        // "1:",
+        // "csrw a0, sscratch",
+        // Now restore frame
+        "lw a0, 31 * 4(sp)",            // Load stored sscratch value into temp register
+        "csrw sscratch, a0",            // Restore sscratch to before trap
+
         "lw ra,  4 *  0(sp)",
         "lw gp,  4 *  1(sp)",
         "lw tp,  4 *  2(sp)",
@@ -156,10 +174,6 @@ extern "C" fn kernel_return(f: &mut TrapFrame) -> ! {
         "lw s11, 4 * 29(sp)",
         "lw sp,  4 * 30(sp)",
 
-        // Check previous state
-
-        // Set
-
         "sret"
     );
 }
@@ -190,12 +204,18 @@ extern "C" fn handle_trap(f: &mut TrapFrame) -> ! {
         write_csr!("sepc", user_pc);
     } else if scause == SCAUSE_TIMER_INTERRUPT {
         println!("Timer interrupt!");
-        TIMER.set(1_000);
+        // println!("Trap frame is {f:x?}");
+        TIMER.set(500);
         unsafe {
             core::arch::asm!("csrsi sstatus, 0x2");
         }
         // crate::println!("timer interrupt: trap frame {f:x?}");
         // crate::println!("sepc is {:x}", read_csr!("sepc"));
+        let current_pid = CURRENT_PROC.lock()
+            .expect("current proc should be initialised");
+        let next_pid = PROCS.get_next(current_pid);
+        // let _frame = PROCS.try_get_frame(next_pid);
+        yield_now();
         kernel_return(f);
     } else {
         panic!("unexpected trap scause=0x{:x}, stval=0x{:x}, sepc=0x{:x}", scause, stval, user_pc);
@@ -220,6 +240,7 @@ fn handle_syscall(f: &mut TrapFrame) {
                     f.a0 = ch as usize;
                     break;
                 }
+                crate::println!("in sys_getchar");
                 yield_now();
             }
         },
