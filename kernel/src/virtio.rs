@@ -101,7 +101,7 @@ impl VirtioVirtq {
 
 // Safety: Single threaded OS
 unsafe impl Sync for VirtioVirtq {}
-// SAFETY: VirtioVirtq contains a pointer to memory-mapped I/O registers.
+// Safety: VirtioVirtq contains a pointer to memory-mapped I/O registers.
 // This pointer is only accessed while holding the SpinLock, ensuring
 // no concurrent access occurs. The hardware is accessible from any CPU core.
 unsafe impl Send for VirtioVirtq {}
@@ -136,42 +136,40 @@ static BLK_REQ: SpinLock<Option<Box<VirtioBlkReq>>> = SpinLock::new(None);
 static BLK_CAPACITY: SpinLock<Option<u64>> = SpinLock::new(None);
 
 fn virtio_reg_read32(offset: u32) -> u32 {
-    // Safety:
-    // * VIRTIO_BLK_PADDR + offset is valid for reads
-    // * VIRTIO_BLK_PADDR is 32-bit aligned and offset is 32-bit aligned
-    // * VIRTIO_BLK_PADDR + offset points to a QEMU initialized `u32`
-    // * `u32` is Copy
     assert_eq!((VIRTIO_BLK_PADDR + offset) % align_of::<u32>() as u32, 0);
     unsafe {
+        // Safety:
+        // * VIRTIO_BLK_PADDR + offset is valid for reads
+        // * VIRTIO_BLK_PADDR is 32-bit aligned and offset is 32-bit aligned
+        // * VIRTIO_BLK_PADDR + offset points to a QEMU initialized `u32`
+        // * `u32` is Copy
         ptr::read_volatile((VIRTIO_BLK_PADDR + offset) as *const u32)
     }
 }
 
 fn virtio_reg_read64(offset: u32) -> u64 {
-    // Safety:
-    // * VIRTIO_BLK_PADDR + offset is valid for reads
-    // * VIRTIO_BLK_PADDR is 64-bit aligned and offset is 64-bit aligned
-    // * VIRTIO_BLK_PADDR + offset points to a QEMU initialized `u64`
-    // * `u64` is Copy
     assert_eq!((VIRTIO_BLK_PADDR + offset) % align_of::<u64>() as u32, 0);
     unsafe {
+        // Safety:
+        // * VIRTIO_BLK_PADDR + offset is valid for reads
+        // * VIRTIO_BLK_PADDR is 64-bit aligned and offset is 64-bit aligned
+        // * VIRTIO_BLK_PADDR + offset points to a QEMU initialized `u64`
+        // * `u64` is Copy
         ptr::read_volatile((VIRTIO_BLK_PADDR + offset) as *const u64)
     }
 }
 
 fn virtio_reg_write32(offset: u32, value: u32) {
-    // Safety:
-    // * VIRTIO_BLK_PADDR + offset is valid for writes.
-    // * VIRTIO_BLK_PADDR + offset is properly 32-bit aligned.
     assert_eq!((VIRTIO_BLK_PADDR + offset) % align_of::<u32>() as u32, 0);
     unsafe {
+        // Safety:
+        // * VIRTIO_BLK_PADDR + offset is valid for writes.
+        // * VIRTIO_BLK_PADDR + offset is properly 32-bit aligned.
         ptr::write_volatile((VIRTIO_BLK_PADDR + offset) as *mut u32, value)
     }
 }
 
 fn virtio_reg_fetch_and_or32(offset: u32, value: u32) {
-    // Safety:
-    // * Caller ensures VIRTIO_BLK_PADDR + offset is valid for reads and writes
     virtio_reg_write32(offset, virtio_reg_read32(offset) | value);
 }
 
@@ -245,13 +243,13 @@ fn virtq_kick(vq: &mut VirtioVirtq, desc_index: u16) {
 
 // Returns whether there are requests being processed by the device.
 fn virtq_is_busy(vq: &VirtioVirtq) -> bool {
-    // Safety:
-    // * vq.used_index is valid for reads
-    // * vq.used_index is 16-bit aligned
-    // * vq.used_index points to a value properly initialised by QEMU
-    // * `u16` is Copy
     assert_eq!(vq.used_index as usize % align_of::<u16>(), 0);
     unsafe {
+        // Safety:
+        // * vq.used_index is valid for reads
+        // * vq.used_index is 16-bit aligned
+        // * vq.used_index points to a value properly initialised by QEMU
+        // * `u16` is Copy
         vq.last_used_index != core::ptr::read_volatile(vq.used_index)
     }
 }

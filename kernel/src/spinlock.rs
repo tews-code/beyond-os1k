@@ -24,7 +24,7 @@ impl<T> SpinLock<T> {
         while self.locked.swap(true, Acquire) {
             core::hint::spin_loop();
             // crate::print!(".");
-            panic!("locked");
+            panic!("locked");   // For single-threaded keep as panic, but need to remove on multitasking
         }
         Guard { lock: self }
     }

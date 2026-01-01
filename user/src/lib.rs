@@ -26,7 +26,7 @@ unsafe extern "C" {
     static __user_stack_top: u8;
 }
 
-pub fn sys_call(sysno: usize, arg0: isize, arg1: isize, arg2: isize, arg3: isize) -> isize {
+pub fn sys_call(arg0: isize, arg1: isize, arg2: isize, arg3: isize, sysno: usize)  -> isize {
     let a0: isize;
     unsafe{asm!(
         "ecall",
@@ -34,14 +34,14 @@ pub fn sys_call(sysno: usize, arg0: isize, arg1: isize, arg2: isize, arg3: isize
         in("a1") arg1,
         in("a2") arg2,
         in("a3") arg3,
-        in("a4") sysno,
+        in("a7") sysno,
     )}
     a0
 }
 
 #[unsafe(no_mangle)]
 pub fn put_byte(b: u8) -> Result<(), isize> {
-    let result = sys_call(SYS_PUTBYTE, b as isize, 0, 0, 0);
+    let result = sys_call(b as isize, 0, 0, 0, SYS_PUTBYTE);
     if result == 0 {
         Ok(())
     } else {
@@ -50,7 +50,7 @@ pub fn put_byte(b: u8) -> Result<(), isize> {
 }
 
 pub fn get_char() -> Option<usize> {
-    let ch = sys_call(SYS_GETCHAR, 0, 0, 0, 0);
+    let ch = sys_call(0, 0, 0, 0, SYS_GETCHAR);
     if ch == -1 {
         None
     } else {
@@ -60,16 +60,16 @@ pub fn get_char() -> Option<usize> {
 
 #[unsafe(no_mangle)]
 pub fn exit() -> ! {
-    let _ = sys_call(SYS_EXIT, 0, 0, 0, 0);
+    let _ = sys_call(0, 0, 0, 0, SYS_EXIT);
     unreachable!("just in case!");
 }
 
 pub fn readfile(filename: &str, buf: &mut [u8]) {
-    let _ = sys_call(SYS_READFILE, filename.as_ptr() as isize, filename.len() as isize, buf.as_mut_ptr() as isize, buf.len() as isize);
+    let _ = sys_call(filename.as_ptr() as isize, filename.len() as isize, buf.as_mut_ptr() as isize, buf.len() as isize, SYS_READFILE);
 }
 
 pub fn writefile(filename: &str, buf: &[u8]) {
-    let _ = sys_call(SYS_WRITEFILE, filename.as_ptr() as isize, filename.len() as isize,  buf.as_ptr() as isize, buf.len() as isize);
+    let _ = sys_call(filename.as_ptr() as isize, filename.len() as isize,  buf.as_ptr() as isize, buf.len() as isize, SYS_WRITEFILE);
 }
 
 #[unsafe(link_section = ".text.start")]

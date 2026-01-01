@@ -36,27 +36,6 @@ struct TarHeader {
 }
 
 impl TarHeader {
-    // const fn empty() -> Self {
-    //     Self {
-    //         name: [0u8; 100],
-    //         mode: [0u8; 8],
-    //         uid: [0u8; 8],
-    //         gid: [0u8; 8],
-    //         size: [0u8; 12],
-    //         mtime: [0u8; 12],
-    //         checksum: [0u8; 8],
-    //         typeflag: 0u8,
-    //         linkname: [0u8; 100],
-    //         magic: [0u8; 6],
-    //         version: [0u8; 2],
-    //         uname: [0u8; 32],
-    //         gname: [0u8; 32],
-    //         devmajor: [0u8; 8],
-    //         devminor: [0u8; 8],
-    //         prefix: [0u8; 155],
-    //         _padding: [0u8; 12],
-    //     }
-    // }
 
     fn zeroed() -> Self {
         // SAFETY: VirtioVirtq contains only structs/arrays of integers and pointers.
@@ -95,24 +74,12 @@ pub struct File {
 }
 
 impl File {
-    // const fn empty() -> Self {
-    //     Self {
-    //         in_use: false,
-    //         name: [0u8; 100],
-    //         data: [0u8; 1024],
-    //         size: 0,
-    //     }
-    // }
-
     const fn zeroed() -> Self {
         // SAFETY: VirtioVirtq contains only structs/arrays of integers and pointers.
         // All-zero bytes is a valid representation: integers become 0, pointer becomes null.
         unsafe { core::mem::MaybeUninit::zeroed().assume_init() }
     }
 }
-
-// #[derive(Clone, Debug)]
-// pub struct Files ( pub RefCell<[File; FILES_MAX]>);
 
 #[derive(Debug)]
 pub struct Files(pub SpinLock<[File; FILES_MAX]>);
@@ -136,12 +103,7 @@ impl Files {
     }
 }
 
-// pub static FILES: Files = Files(RefCell::new([File::empty(); FILES_MAX]));
-
 pub static FILES: Files = Files(SpinLock::new([File::zeroed(); FILES_MAX]));
-
-// #[derive(Debug)]
-// pub struct Disk(RefCell<[u8; DISK_MAX_SIZE]>);
 
 #[derive(Debug)]
 pub struct Disk(SpinLock<[u8; DISK_MAX_SIZE]>);
@@ -177,12 +139,12 @@ fn int2oct(dec: usize, oct: &mut [u8]) {
         *last_byte = b'\0'; // Set last byte to nul terminator
     }
     oct.iter_mut()
-    .rev()
-    .skip(1) // Skip the last byte to leave as nul terminator
-    .for_each(|byte| {
-        *byte = (num % 8) as u8 + b'0';
-    num /= 8;
-    });
+        .rev()
+        .skip(1) // Skip the last byte to leave as nul terminator
+        .for_each(|byte| {
+            *byte = (num % 8) as u8 + b'0';
+            num /= 8;
+        });
 }
 
 pub fn fs_init() {
@@ -239,8 +201,6 @@ pub fn fs_init() {
                         SECTOR_SIZE
         );
     }
-
-    // println!("at the end of fs_init, FILES is {:?}", FILES);
 }
 
 pub fn fs_flush() {
@@ -285,8 +245,6 @@ pub fn fs_flush() {
 
         off += align_up(header.size() + file.size, SECTOR_SIZE);
     }
-
-    // println!("tar: fs_flush just before write DISK is {:?}", disk);
 
     // Write `disk` buffer into the vitio-blk.
     for sector in 0..(DISK_MAX_SIZE / SECTOR_SIZE) {

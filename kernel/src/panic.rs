@@ -9,6 +9,9 @@ use crate::println;
 fn panic(info: &PanicInfo) -> ! {
     println!("⚠️ Panic: {}", info);
 
+    // Disable interrupts
+    write_csr!("sstatus", 0);
+
     loop {
         unsafe {asm!("wfi")};
     }

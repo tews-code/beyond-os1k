@@ -4,9 +4,8 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::ptr::write_bytes;
 
 use crate::address::{align_up, PAddr};
+use crate::page::PAGE_SIZE;
 use crate::spinlock::SpinLock;
-
-pub const PAGE_SIZE: usize = 4096;
 
 //Safety: Symbols created by linker script
 unsafe extern "C" {
@@ -43,13 +42,10 @@ unsafe impl GlobalAlloc for BumpAllocator {
 
         *next_paddr = Some(PAddr::new(new_paddr));
 
-        // Safety: paddr.as_ptr_mut() is aligned and not null; entire aligned_size of bytes is available for write
-        unsafe{ write_bytes(paddr.as_ptr_mut() as *mut u8, 0x55, aligned_size) };
-
-        // crate::println!("alloc page: {:x} with {} pages allocated", paddr.as_usize(), aligned_size / PAGE_SIZE);
-        // for _ in 0..5 {
-        //     crate::delay();
-        // }
+        unsafe{
+            // Safety: paddr.as_ptr_mut() is aligned and not null; entire aligned_size of bytes is available for write
+            write_bytes(paddr.as_ptr_mut() as *mut u8, 0x55, aligned_size)
+        };
 
         paddr.as_ptr() as *mut u8
     }

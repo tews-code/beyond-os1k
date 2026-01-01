@@ -1,65 +1,11 @@
 //! Kernel entry
 
-use alloc::slice;
 use core::arch::naked_asm;
 
-use common::{
-    SYS_PUTBYTE,
-    SYS_GETCHAR,
-    SYS_EXIT,
-    SYS_READFILE,
-    SYS_WRITEFILE,
-};
-
-use crate::process::{PROCS, State};
-use crate::sbi::{put_byte, get_char};
-use crate::scheduler::{yield_now, CURRENT_PROC};
-use crate::tar::{FILES, fs_flush};
-use crate::timer::TIMER;
-use crate::{println, read_csr, write_csr};
-
-const SCAUSE_ECALL: usize = 8;
-const SCAUSE_TIMER_INTERRUPT: usize = 0x80000005;
-
-#[derive(Debug)]
-#[repr(C, packed)]
-pub struct TrapFrame{
-    ra: usize,      // 0
-    gp: usize,
-    tp: usize,
-    t0: usize,
-    t1: usize,
-    t2: usize,
-    t3: usize,
-    t4: usize,
-    t5: usize,
-    t6: usize,
-    a0: usize,
-    a1: usize,
-    a2: usize,
-    a3: usize,
-    a4: usize,
-    a5: usize,
-    a6: usize,
-    a7: usize,
-    s0: usize,
-    s1: usize,
-    s2: usize,
-    s3: usize,
-    s4: usize,
-    s5: usize,
-    s6: usize,
-    s7: usize,
-    s8: usize,
-    s9: usize,
-    s10: usize,
-    s11: usize,
-    sp: usize,          // 30
-    sscratch: usize,    // 31
-}
+use crate::scheduler::SSTATUS_SIE;
 
 #[unsafe(naked)]
-pub unsafe extern "C" fn kernel_entry() -> ! {
+pub unsafe extern "C" fn kernel_entry() {
     naked_asm!(
         ".align 2",
 
@@ -123,29 +69,19 @@ pub unsafe extern "C" fn kernel_entry() -> ! {
         "csrw sscratch, x0",            // Zero sscratch now we are in kernel space
         "mv a0, sp",                // a0 is set to sp (bottom of trap frame)
         "call handle_trap",
-    );
-}
 
-#[unsafe(naked)]
-extern "C" fn kernel_return(f: &mut TrapFrame) -> ! {
-    naked_asm!(
-        "mv sp, a0",                // Trap frame is in a0, switch this to sp
+        // Restore after trap handled
 
-        // Check if we trapped from userspace and restore sscratch
-        // "csrr a0, sstatus",         // Read sstatus to a0 (safe as a0 saved to sp)
-        // "andi a0, a0, 8",           // sstatus.SPP is at bit 8 (0=prev priv user)
-        // "bnez a0, 1f",
-        // "li a0,"
-        // "1:",
-        // "csrw a0, sscratch",
-        // Now restore frame
+        // Disable interrupts atomically and check value
+        "csrrci t0, sstatus, {sstatus_sie}",
+
         "lw a0, 31 * 4(sp)",            // Load stored sscratch value into temp register
         "csrw sscratch, a0",            // Restore sscratch to before trap
 
         "lw ra,  4 *  0(sp)",
         "lw gp,  4 *  1(sp)",
         "lw tp,  4 *  2(sp)",
-        "lw t0,  4 *  3(sp)",
+        // "lw t0,  4 *  3(sp)",        // t0 temp holding interrupt status
         "lw t1,  4 *  4(sp)",
         "lw t2,  4 *  5(sp)",
         "lw t3,  4 *  6(sp)",
@@ -172,141 +108,22 @@ extern "C" fn kernel_return(f: &mut TrapFrame) -> ! {
         "lw s9,  4 * 27(sp)",
         "lw s10, 4 * 28(sp)",
         "lw s11, 4 * 29(sp)",
+
+        // Re-enable interrupts if they were enabled
+        "beqz t0, 4f",
+        "lw t0,  4 *  3(sp)",        // Restore t0
+        "lw sp,  4 * 30(sp)",
+        "csrsi sstatus, {sstatus_sie}",
+        "j 5f",
+
+        "4:",
+        "lw t0,  4 *  3(sp)",        // Restore t0
         "lw sp,  4 * 30(sp)",
 
-        "sret"
+        "5:",
+        "sret",
+        sstatus_sie = const SSTATUS_SIE,
     );
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn handle_trap(f: &mut TrapFrame) -> ! {
-    let scause = read_csr!("scause");
-    let stval = read_csr!("stval");
-    let mut user_pc = read_csr!("sepc");
-
-    // crate::println!("in handle_trap, sie is {:032b}", read_csr!("sie"));
-    // crate::println!("in handle_trap, sstatus is {:032b}", read_csr!("sstatus"));
-    // Reenable interrupts
-    // let mut sstatus = read_csr!("sstatus");
-    // sstatus |= crate::process::SSTATUS_SIE;
-    // write_csr!("sstatus", sstatus);
-
-    // crate::println!("in handle_trap, sstatus updated to {:032b}", read_csr!("sstatus"));
-    // let sscratch = read_csr!("sscratch");
-    // crate::println!("in handle_trap, sscratch is {sscratch:x}");
-
-    if scause == SCAUSE_ECALL {
-        unsafe {
-            core::arch::asm!("csrsi sstatus, 0x2");
-        }
-        handle_syscall(f);
-        user_pc += 4;
-        write_csr!("sepc", user_pc);
-    } else if scause == SCAUSE_TIMER_INTERRUPT {
-        println!("Timer interrupt!");
-        // println!("Trap frame is {f:x?}");
-        TIMER.set(500);
-        unsafe {
-            core::arch::asm!("csrsi sstatus, 0x2");
-        }
-        // crate::println!("timer interrupt: trap frame {f:x?}");
-        // crate::println!("sepc is {:x}", read_csr!("sepc"));
-        let current_pid = CURRENT_PROC.lock()
-            .expect("current proc should be initialised");
-        let next_pid = PROCS.get_next(current_pid);
-        // let _frame = PROCS.try_get_frame(next_pid);
-        yield_now();
-        kernel_return(f);
-    } else {
-        panic!("unexpected trap scause=0x{:x}, stval=0x{:x}, sepc=0x{:x}", scause, stval, user_pc);
-    }
-
-    // crate::println!("in handle_trap, frame is {f:x?}");
-    kernel_return(f);
-}
-
-fn handle_syscall(f: &mut TrapFrame) {
-    let sysno = f.a4;
-    match sysno {
-        SYS_PUTBYTE => {  // Match what user code sends
-            match put_byte(f.a0 as u8) {
-                Ok(_) => f.a0 = 0,     // Set return value to 0 (success)
-                Err(e) => f.a0 = e as usize,    // Set return value to error code
-            }
-        },
-        SYS_GETCHAR => {
-            loop {
-                if let Ok(ch) = get_char() {
-                    f.a0 = ch as usize;
-                    break;
-                }
-                crate::println!("in sys_getchar");
-                yield_now();
-            }
-        },
-        SYS_EXIT => {
-            let current = CURRENT_PROC.lock()
-                .expect("current process should be running");
-            crate::println!("process {} exited", current);
-            if let Some(p) = PROCS.0.lock().iter_mut()
-                .find(|p| p.pid == current) {
-                    p.state = State::Exited
-                }
-            yield_now();
-            unreachable!("unreachable after SYS_EXIT");
-        },
-        SYS_READFILE | SYS_WRITEFILE => 'block: {
-            let filename_ptr = f.a0 as *const u8;
-            let filename_len = f.a1;
-
-            // Safety: Caller guarantees that filename_ptr points to valid memory
-            // of length filename_len that remains valid for the lifetime of this reference
-            let filename = unsafe {
-                str::from_utf8(slice::from_raw_parts(filename_ptr, filename_len))
-            }.expect("filename must be valid UTF-8");
-
-            let buf_ptr = f.a2 as *mut u8;
-            let buf_len = f.a3;
-
-            // Safety: Caller guarantees that buf_ptr points to valid memory
-            // of length buf_len that remains valid for the lifetime of this reference
-            let buf = unsafe {
-                slice::from_raw_parts_mut(buf_ptr, buf_len)
-            };
-
-            // println!("handling syscall SYS_READFILE | SYS_WRITEFILE for file {:?}", filename);
-
-            let Some(file_i) = FILES.fs_lookup(filename) else {
-                println!("file not found {:x?}", filename);
-                f.a0 = usize::MAX; // 2's complement is -1
-                break 'block;
-            };
-
-            match sysno {
-                SYS_WRITEFILE => {
-                    let mut files = FILES.0.lock();
-                    // try_borrow_mut()
-                    // .expect("should be able to borrow FILES mutably to handle SYS_WRITEFILE");
-
-                    files[file_i].data[..buf.len()].copy_from_slice(buf);
-                    files[file_i].size = buf.len();
-                    drop(files);
-                    fs_flush();
-                },
-                SYS_READFILE => {
-                    let files = FILES.0.lock();
-                    // try_borrow()
-                    // .expect("should be able to borrow FILES to handle SYS_READFILE");
-
-                    buf.copy_from_slice(&files[file_i].data[..buf.len()]);
-                },
-                _ => unreachable!("sysno must be SYS_READFILE or SYS_WRITEFILE"),
-            }
-
-            f.a0 = buf_len;
-        },
-        _ => {panic!("unexpected syscall sysno={:x}", sysno);},
-    }
 }
 
 #[macro_export]

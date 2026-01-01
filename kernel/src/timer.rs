@@ -11,12 +11,6 @@ impl Timer {
         crate::sbi::set_timer(current_ticks + ticks)
         .expect("could not set timer");
     }
-
-    // pub fn get(&self) -> u64 {
-    //     let ticks = get_timer();
-    //     let timeout = ticks_to_millisecs(ticks);
-    //     timeout
-    // }
 }
 
 pub static TIMER: Timer = Timer;
@@ -25,11 +19,6 @@ fn millisecs_to_ticks(millisecs: u64) -> u64 {
     const FREQ: u64 = 10_000_000; // QEMU counter runs at 10 MHz ticks / second
     millisecs * FREQ / 1_000
 }
-
-// fn ticks_to_millisecs(ticks: u64) -> u64 {
-//     const FREQ: u64 = 10_000_000; // QEMU counter runs at 10 MHz ticks / second
-//     ticks / FREQ * 1_000
-// }
 
 #[inline]
 fn get_timer() -> u64 {

@@ -10,7 +10,6 @@ use core::arch::{
     naked_asm,
 };
 use core::ptr::write_bytes;
-use core::sync::atomic::AtomicBool;
 
 #[allow(unused_imports)]
 use common::{print, println};
@@ -23,6 +22,7 @@ mod page;
 mod panic;
 mod process;
 mod tar;
+mod trap;
 mod sbi;
 mod scheduler;
 mod spinlock;
@@ -30,24 +30,20 @@ mod timer;
 mod virtio;
 
 use crate::entry::kernel_entry;
-use crate::process::{
-    create_process,
-    user_entry,
-};
-use crate::scheduler::yield_now;
-use crate::spinlock::SpinLock;
+use crate::process::{create_process,user_entry};
+use crate::scheduler::{scheduler_init, yield_now};
 use crate::tar::fs_init;
-use crate::timer::TIMER;
-use crate::virtio::{virtio_blk_init, SECTOR_SIZE, read_write_disk};
+use crate::virtio::virtio_blk_init;
 
-// Safety: Symbols created by linker script
 unsafe extern "C" {
+    // Safety: Symbols created by linker script
     static __bss: u8;
     static __bss_end: u8;
     static __stack_top: u8;
 }
 
 unsafe extern "C" {
+    // Safety: Symbols created by linker script
     static _binary_shell_bin_start: u8;
     static _binary_shell_bin_size: u8;
 }
@@ -58,15 +54,11 @@ fn delay() {
     }
 }
 
-static PROC_A: SpinLock<Option<usize>> = SpinLock::new(None);
-static PROC_B: SpinLock<Option<usize>> = SpinLock::new(None);
-
 fn proc_a_entry() {
     println!("starting process A");
     loop {
         print!("🐈");
-        // yield_now();
-        delay()
+        delay();
     }
 }
 
@@ -74,8 +66,7 @@ fn proc_b_entry() {
     println!("starting process B");
     loop {
         print!("🐕");
-        // yield_now();
-        delay()
+        delay();
     }
 }
 
@@ -83,52 +74,24 @@ fn proc_b_entry() {
 fn kernel_main() -> ! {
     let bss = &raw const __bss;
     let bss_end = &raw const __bss_end;
-    // Safety: from linker script bss is aligned and bss segment is valid for writes up to bss_end
     unsafe {
+        // Safety: from linker script bss is aligned and bss segment is valid for writes up to bss_end
         write_bytes(bss as *mut u8, 0, bss_end as usize - bss as usize);
     }
 
     write_csr!("stvec", kernel_entry as usize);
 
+    common::println!("Hello World!\n🦀 initialising ...");
     virtio_blk_init();
     fs_init();
+    scheduler_init();
 
-    // Enable timer interrupt in supervisor mode
-    unsafe {
-        let mut sie: u32;
-        asm!("csrr {}, sie", out(reg) sie);
-        // // sie |= 1 << 1; // SSIE: supervisor-level software interrupts
-        sie |= 1 << 5; // STIE: supervisor-level timer interrupts
-        // // sie |= 1 << 9; // SEIE: supervisor-level external interrupts
-        asm!("csrw sie, {}", in(reg) sie);
-        // crate::println!("in main sie is {:032b}", read_csr!("sie"));
+    let _ = create_process(proc_a_entry as usize, core::ptr::null(), 0);
+    let _ = create_process(proc_b_entry as usize, core::ptr::null(), 0);
 
-        let mut sstatus: u32;
-        asm!("csrr {}, sstatus", out(reg) sstatus);
-        sstatus |= 1 << 1;
-        asm!("csrw sstatus, {}", in(reg) sstatus);
-        // crate::println!("in main sstatus is {:032b}", read_csr!("sstatus"));
-    };
-
-    common::println!("Hello World! 🦀");
-
-    TIMER.set(500);
-
-    PROC_A.lock().get_or_insert_with(|| {
-        create_process(proc_a_entry as usize, core::ptr::null(), 0)
-    });
-    PROC_B.lock().get_or_insert_with(|| {
-        create_process(proc_b_entry as usize, core::ptr::null(), 0)
-    });
-
-    // new!
     let shell_start = &raw const _binary_shell_bin_start as *mut u8;
     let shell_size = &raw const _binary_shell_bin_size as usize;  // The symbol _address_ is the size of the binary
     let _ = create_process(user_entry as *const() as usize, shell_start, shell_size);
-
-    // crate::println!("function proc_a_entry is at address {:x}", proc_a_entry as *const() as usize);
-    // crate::println!("function proc_b_entry is at address {:x}", proc_b_entry as *const() as usize);
-    // crate::println!("function shell is at address {:x}", user_entry as *const() as usize);
 
     yield_now();
 

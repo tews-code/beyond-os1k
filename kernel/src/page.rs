@@ -4,9 +4,9 @@ use alloc::boxed::Box;
 use core::ops::{Index, IndexMut};
 
 use crate::address::{is_aligned, PAddr, VAddr};
-use crate::allocator::PAGE_SIZE;
 
-const ENTRIES_PER_TABLE: usize = 1024; // Each Page Table Entry is 4 bytes in Sv32
+pub const PAGE_SIZE: usize = 4096;      // Sv32 using 4096 page size
+const ENTRIES_PER_TABLE: usize = 1024;  // Each Page Table Entry is 4 bytes in Sv32
 
 pub const SATP_SV32: usize = 1 << 31;
 pub const PAGE_V: usize = 1 << 0;   // "Valid" bit (entry is enabled)
@@ -30,7 +30,7 @@ impl PAddr {
         (self.as_usize() / PAGE_SIZE) << 10
     }
 
-    pub fn from_ppn(pte: usize) -> Self {
+    fn from_ppn(pte: usize) -> Self {
         PAddr::new((pte >> 10) * PAGE_SIZE)
     }
 }
@@ -79,13 +79,3 @@ pub fn map_page(table1: &mut PageTable, vaddr: VAddr, paddr: PAddr, flags: usize
 
     table0[vaddr.vpn0()] = paddr.ppn() | flags | PAGE_V;
 }
-
-// pub fn map_page_new_process(mut page_table: Box<PageTable>) -> Box<PageTable> {
-//     let mut paddr = &raw const __kernel_base as *const _ as usize;
-//     let free_ram_end = &raw const __free_ram_end as *const _ as usize;
-//     while paddr < free_ram_end {
-//         map_page(&mut page_table, VAddr::new(paddr), PAddr::new(paddr), PAGE_R | PAGE_W | PAGE_X);
-//         paddr += PAGE_SIZE;
-//     }
-//     page_table
-// }
