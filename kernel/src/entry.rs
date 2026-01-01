@@ -146,3 +146,22 @@ macro_rules! write_csr {
         }
     };
 }
+
+
+#[cfg(test)]
+mod test {
+    use crate::{print, println};
+
+    #[test_case]
+    fn write_and_read_csr() {
+        print!("entry: write and read CSR...");
+
+        let tmp = read_csr!("sscratch");
+        let sscratch = 0x87654321;
+        write_csr!("sscratch", sscratch);
+        assert!(sscratch == read_csr!("sscratch"));
+        write_csr!("sscratch", tmp);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+}

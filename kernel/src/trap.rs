@@ -15,7 +15,7 @@ use crate::sbi::{put_byte, get_char};
 use crate::scheduler::{yield_now, PROCS, CURRENT_PROC, SSTATUS_SIE};
 use crate::tar::{FILES, fs_flush};
 use crate::timer::TIMER;
-use crate::{println, read_csr, write_csr};
+use crate::println;
 
 const SCAUSE_ECALL: usize = 8;
 const SCAUSE_TIMER_INTERRUPT: usize = 0x80000005;
@@ -23,38 +23,38 @@ const SCAUSE_TIMER_INTERRUPT: usize = 0x80000005;
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct TrapFrame{
-    ra: usize,      // 0
-    gp: usize,
-    tp: usize,
-    t0: usize,
-    t1: usize,
-    t2: usize,
-    t3: usize,
-    t4: usize,
-    t5: usize,
-    t6: usize,
-    a0: usize,
-    a1: usize,
-    a2: usize,
-    a3: usize,
-    a4: usize,
-    a5: usize,
-    a6: usize,
-    a7: usize,
-    s0: usize,
-    s1: usize,
-    s2: usize,
-    s3: usize,
-    s4: usize,
-    s5: usize,
-    s6: usize,
-    s7: usize,
-    s8: usize,
-    s9: usize,
-    s10: usize,
-    s11: usize,
-    sp: usize,          // 30
-    sscratch: usize,    // 31
+  ra: usize,      // 0
+  gp: usize,
+  tp: usize,
+  t0: usize,
+  t1: usize,
+  t2: usize,
+  t3: usize,
+  t4: usize,
+  t5: usize,
+  t6: usize,
+  a0: usize,
+  a1: usize,
+  a2: usize,
+  a3: usize,
+  a4: usize,
+  a5: usize,
+  a6: usize,
+  a7: usize,
+  s0: usize,
+  s1: usize,
+  s2: usize,
+  s3: usize,
+  s4: usize,
+  s5: usize,
+  s6: usize,
+  s7: usize,
+  s8: usize,
+  s9: usize,
+  s10: usize,
+  s11: usize,
+  sp: usize,          // 30
+  sscratch: usize,    // 31
 }
 
 #[unsafe(no_mangle)]
@@ -153,5 +153,26 @@ fn handle_syscall(f: &mut TrapFrame) {
             f.a0 = buf_len;
         },
         _ => {panic!("unexpected syscall sysno={:x}", sysno);},
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{print, println};
+    use common::SYS_PUTBYTE;
+
+    #[test_case]
+    fn handle_syscall_put_byte() {
+        print!("entry: handle syscall put byte...");
+
+        let f = &mut TrapFrame { ra: 0, gp: 0, tp: 0, t0: 0, t1: 0, t2: 0, t3: 0, t4: 0, t5: 0, t6: 0, a0: 0, a1: 0, a2: 0, a3: 0, a4: 0, a5: 0, a6: 0, a7: 0, s0: 0, s1: 0, s2: 0, s3: 0, s4: 0, s5: 0, s6: 0, s7: 0, s8: 0, s9: 0, s10: 0, s11: 0, sp: 0, sscratch: 0 };
+
+        f.a0 = 'T' as usize;
+        f.a7 = SYS_PUTBYTE;
+
+        handle_syscall(f);
+
+        println!("[\x1b[32mok\x1b[0m]");
     }
 }

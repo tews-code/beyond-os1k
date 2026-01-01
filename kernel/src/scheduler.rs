@@ -22,7 +22,7 @@ impl Procs {
 
     pub fn get_next(&self, current_pid: usize) -> usize {
         // Search for the next runnable process; return IDLE_PID if none found
-        let next_pid = {
+        {
             let current_index = PROCS.try_get_index(current_pid)
                 .expect("current process PID should have an index");
             PROCS.0.lock().iter()
@@ -32,8 +32,7 @@ impl Procs {
                 .find(|p| p.state == State::Runnable && p.pid != IDLE_PID)
                 .map(|p| p.pid)
                 .unwrap_or(IDLE_PID)
-        };
-        next_pid
+        }
     }
 }
 

@@ -4,6 +4,9 @@ set -xue
 #QEMU file path
 QEMU=qemu-system-riscv32
 
+# Run this relative to the workspace directory
+cd "$CARGO_WORKSPACE_DIR"
+
 #Cargo will provide a path to the built kernel in $1
 cp $1 kernel.elf
 

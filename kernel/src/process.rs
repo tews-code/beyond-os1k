@@ -115,7 +115,7 @@ pub fn create_process(entry: usize, image: *const u8, image_size: usize) -> usiz
     // Stack callee-saved registers. These register values will be restored in
     // the first context switch in switch_context.
     let callee_saved_regs: [usize; 17] = [
-        entry as usize, // ra
+        entry,          // ra
         0,              // s0
         0,              // s1
         0,              // s2
@@ -149,4 +149,37 @@ pub fn create_process(entry: usize, image: *const u8, image_size: usize) -> usiz
     process.sp = VAddr::new(&raw const process.stack[callee_saved_regs_start] as usize);
 
     process.pid
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{print, println};
+
+    #[test_case]
+    fn create_and_remove_process() {
+        print!("process: create and remove user process...");
+
+        unsafe extern "C" {
+            static _binary_shell_bin_start: u8;
+            static _binary_shell_bin_size: u8;
+        }
+
+        // Create the user process (will also create idle process)
+        let shell_start = &raw const _binary_shell_bin_start as *mut u8;
+        let shell_size = &raw const _binary_shell_bin_size as usize;  // The symbol _address_ is the size of the binary
+        let shell_pid = create_process(user_entry as *const() as usize, shell_start, shell_size);
+
+        // Check for existance of user process
+        let shell_index = PROCS.try_get_index(shell_pid)
+            .expect("should have created user process");
+
+        // Test and set back to unused
+        let mut procs = PROCS.0.lock();
+        assert!(procs[shell_index].state == State::Runnable);
+        procs[shell_index].state = State::Unused;
+        drop(procs);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
 }

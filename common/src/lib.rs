@@ -1,4 +1,4 @@
-//! Common library
+//! Common library for os1k
 
 #![no_std]
 

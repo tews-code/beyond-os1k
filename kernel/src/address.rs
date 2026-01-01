@@ -53,3 +53,28 @@ pub const fn is_aligned(value: usize, align: usize) -> bool {
     let align_mask = align - 1;
     value & align_mask == 0
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{print, println};
+
+    #[test_case]
+    fn is_address_aligned() {
+        print!("address: is address aligned...");
+
+        assert!(is_aligned(0x10000000, 512) == true);
+        assert!(is_aligned(0x10000001, 1024) == false);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn align_address_up() {
+        print!("address: align address up...");
+
+        assert!(align_up(0x10000001, 512) == 0x10000200);
+
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+}

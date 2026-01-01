@@ -59,3 +59,34 @@ pub fn set_timer(ticks: u64) -> Result<isize, isize> {
         Err(result as isize)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{print, println};
+
+    #[test_case]
+    fn push_a_byte() {
+        print!("sbi: push an 'X'... ");
+        let _ = put_byte(b'X');
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn test_get_char() {
+        print!("sbi: get char non-blocking... ");
+        let _ = get_char();
+        println!("[\x1b[32mok\x1b[0m]");
+    }
+
+    #[test_case]
+    fn test_set_timer() {
+        print!("sbi: making sbi set_timer call... ");
+        let ticks: u64 = 1_000_000;
+        if let Ok(result) = set_timer(ticks) {
+            println!("[\x1b[32mok\x1b[0m]");
+        } else {
+            println!("X");
+        }
+    }
+}
